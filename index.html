@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Night Gurdian Drone — Ground Control System</title>
+<style>
+:root{--bg:#061018;--panel:#0b1720;--panel2:#0e1d27;--line:#20333e;--text:#e3edf2;--muted:#728894;--green:#39d98a;--yellow:#ffd34d;--red:#ff5b5b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif}
+header{height:70px;background:#09151e;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 22px}
+.brand{display:flex;align-items:center;gap:12px}.logo{width:42px;height:42px;border:1px solid var(--green);border-radius:8px;display:grid;place-items:center;color:var(--green);font-weight:800}.title{font-weight:800;letter-spacing:1.4px}.subtitle{font-size:10px;color:var(--muted);letter-spacing:1.5px;margin-top:3px}
+.system{font-size:11px;color:var(--muted);display:flex;gap:8px;align-items:center}.lamp{width:9px;height:9px;border-radius:50%;background:#6d7880}
+main{max-width:1500px;margin:auto;padding:16px;display:grid;grid-template-columns:1.25fr 1fr;gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;overflow:hidden}.head{height:42px;background:var(--panel2);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 13px}.head b{font-size:11px;letter-spacing:1.1px}.tag{font-size:9px;border:1px solid #2a404b;border-radius:4px;padding:4px 6px;color:#80939c}
+.map{height:390px;position:relative;background:#091a22;overflow:hidden}.mapgrid{position:absolute;inset:0;background-image:linear-gradient(#ffffff08 1px,transparent 1px),linear-gradient(90deg,#ffffff08 1px,transparent 1px);background-size:42px 42px}.mapcenter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;color:var(--muted);font-size:10px}.cross{width:28px;height:28px;border:1px solid var(--green);border-radius:50%;margin:auto;position:relative}.cross:before,.cross:after{content:"";position:absolute;background:var(--green)}.cross:before{width:42px;height:1px;left:-8px;top:13px}.cross:after{width:1px;height:42px;left:13px;top:-8px}.mapfoot{position:absolute;bottom:10px;left:12px;color:#637983;font-size:9px}
+.radar{height:390px;background:radial-gradient(circle at 50% 100%,#123329,#07131a 65%);display:grid;place-items:center}.radar canvas{width:100%;height:100%}
+.data{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line)}.cell{background:var(--panel);padding:12px}.label{font-size:9px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}.val{font-size:21px;font-weight:700;margin-top:6px}.unit{font-size:10px;color:var(--muted);font-weight:400}
+.controls{padding:13px;display:flex;gap:8px;flex-wrap:wrap}button{border:1px solid #2a4652;background:#10232c;color:#dbe7eb;border-radius:5px;padding:9px 12px;font-size:10px;font-weight:800;cursor:pointer}button:hover{border-color:var(--green);color:var(--green)}button.green{border-color:#277e59;color:#64e4a6}.log{height:105px;padding:9px 12px;border-top:1px solid var(--line);font:10px Consolas,monospace;color:#8499a3;overflow:auto;white-space:pre-wrap}
+.wide{grid-column:1/3}
+@media(max-width:900px){main{grid-template-columns:1fr}.wide{grid-column:auto}.data{grid-template-columns:repeat(2,1fr)}}
+
+.ngd-header{height:92px;position:relative;background:#09151e;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 22px;overflow:hidden}
+.ngd-banner{height:82px;flex:1;max-width:calc(100% - 190px);background-image:url("header.png");background-repeat:no-repeat;background-position:left center;background-size:auto 100%}
+.ngd-header .system{position:relative;z-index:2;min-width:170px;justify-content:flex-end}
+@media(max-width:700px){.ngd-header{height:76px}.ngd-banner{height:70px;max-width:calc(100% - 125px)}.ngd-header .system{min-width:115px;font-size:9px}}
+</style>
+</head>
+<body>
+<header class="ngd-header">
+  <div class="ngd-banner"></div>
+  <div class="system"><span class="lamp" id="lamp"></span><span id="systemText">SYSTEM STANDBY</span></div>
+</header>
+
+<main>
+<section class="card">
+<div class="head"><b>LIVE FLIGHT MAP</b><span class="tag">APM GPS</span></div>
+<div class="map"><div class="mapgrid"></div><div class="mapcenter"><div class="cross"></div><div id="mapText">WAITING FOR GPS</div></div><div class="mapfoot">LIVE TRACKING • APM TELEMETRY</div></div>
+</section>
+
+<section class="card">
+<div class="head"><b>ULTRASONIC RADAR</b><span class="tag" id="radarTag">STANDBY</span></div>
+<div class="radar"><canvas id="radarCanvas" width="650" height="390"></canvas></div>
+</section>
+
+<section class="card">
+<div class="head"><b>FLIGHT TELEMETRY</b><span class="tag">APM 2.8</span></div>
+<div class="data">
+<div class="cell"><div class="label">Latitude</div><div class="val" id="lat">—</div></div>
+<div class="cell"><div class="label">Longitude</div><div class="val" id="lon">—</div></div>
+<div class="cell"><div class="label">Altitude</div><div class="val" id="alt">— <span class="unit">m</span></div></div>
+<div class="cell"><div class="label">Ground Speed</div><div class="val" id="speed">— <span class="unit">m/s</span></div></div>
+<div class="cell"><div class="label">Heading</div><div class="val" id="heading">— <span class="unit">°</span></div></div>
+<div class="cell"><div class="label">Climb Rate</div><div class="val" id="climb">— <span class="unit">m/s</span></div></div>
+<div class="cell"><div class="label">Satellites</div><div class="val" id="sats">—</div></div>
+<div class="cell"><div class="label">GPS Fix</div><div class="val" id="fix">NO FIX</div></div>
+<div class="cell"><div class="label">Flight Mode</div><div class="val" id="mode">—</div></div>
+</div>
+</section>
+
+<section class="card">
+<div class="head"><b>SYSTEM CONNECTIONS</b><span class="tag">USB SERIAL</span></div>
+<div class="controls">
+<button class="green" id="arduinoBtn">CONNECT ARDUINO UNO</button>
+<button class="green" id="apmBtn">CONNECT APM</button>
+<button id="disconnectBtn">DISCONNECT ALL</button>
+</div>
+<div class="log" id="log">Dashboard ready.
+Arduino Uno and APM use separate USB connections.
+Click a connection button and choose the correct serial device.</div>
+</section>
+
+<section class="card wide">
+<div class="head"><b>RADAR TELEMETRY</b><span class="tag">HC-SR04</span></div>
+<div class="data">
+<div class="cell"><div class="label">Distance</div><div class="val" id="distance">— <span class="unit">cm</span></div></div>
+<div class="cell"><div class="label">Radar Angle</div><div class="val">90 <span class="unit">°</span></div></div>
+<div class="cell"><div class="label">Sensor Status</div><div class="val" id="sensor">OFFLINE</div></div>
+</div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);let arPort=null,arReader=null,apmPort=null,apmReader=null,radarDistance=-1;
+function log(x){$("log").textContent+="\n"+x;$("log").scrollTop=$("log").scrollHeight}
+function setSystem(t,on){$("systemText").textContent=t;$("lamp").style.background=on?"#39d98a":"#6d7880"}
+function setDistance(d){radarDistance=d;$("distance").innerHTML=(d>=0?d.toFixed(1):"—")+' <span class="unit">cm</span>';$("sensor").textContent=d>=0?"ONLINE":"NO ECHO";$("radarTag").textContent=d>=0?"LIVE":"NO ECHO"}
+async function connectArduino(){
+ try{
+  arPort=await navigator.serial.requestPort();await arPort.open({baudRate:9600});
+  log("Arduino Uno connected.");setSystem("ARDUINO CONNECTED",true);
+  const decoder=new TextDecoderStream();const pipe=arPort.readable.pipeTo(decoder.writable);arReader=decoder.readable.getReader();
+  let buf="";
+  while(true){const {value,done}=await arReader.read();if(done)break;buf+=value;let lines=buf.split(/\r?\n/);buf=lines.pop();
+   for(const line of lines){const m=line.match(/Distance\s*:\s*(-?\d+(?:\.\d+)?)\s*cm/i)||line.match(/DIST\s*:?\s*(-?\d+(?:\.\d+)?)/i);if(m){const d=parseFloat(m[1]);setDistance(d);}}
+  }
+ }catch(e){log("Arduino error: "+e.message);setDistance(-1)}
+}
+function modeName(v){
+  const m={0:"STABILIZE",1:"ACRO",2:"ALT HOLD",3:"AUTO",4:"GUIDED",5:"LOITER",6:"RTL",7:"CIRCLE",9:"LAND",11:"DRIFT",13:"SPORT",16:"POSHOLD",17:"BRAKE",18:"THROW",21:"SMART RTL",22:"FLOWHOLD",23:"FOLLOW",24:"ZIGZAG"};
+  return m[v]||("MODE "+v);
+}
+function u8(a,i){return a[i]||0}
+function u16(a,i){return ((a[i]||0)|((a[i+1]||0)<<8))>>>0}
+function i16(a,i){let v=u16(a,i);return v>32767?v-65536:v}
+function i32(a,i){return (a[i]||0)|((a[i+1]||0)<<8)|((a[i+2]||0)<<16)|((a[i+3]||0)<<24)}
+
+function parseMavlink(bytes){
+  let i=0;
+  while(i<bytes.length){
+    if(bytes[i]!==0xFE && bytes[i]!==0xFD){i++;continue;}
+    const v=bytes[i]===0xFD?2:1;
+    const len=bytes[i+1]||0;
+    const header=v===2?10:6;
+    const signed=(v===2 && ((bytes[i+2]&0x01)!==0));
+    const total=1+header+len+2+(signed?13:0);
+    if(i+total>bytes.length) break;
+
+    const id=v===2
+      ? ((bytes[i+7]||0)|((bytes[i+8]||0)<<8)|((bytes[i+9]||0)<<16))
+      : (bytes[i+5]||0);
+    const p=v===2?i+10:i+6;
+
+    // GPS_RAW_INT (24)
+    if(id===24 && len>=30){
+      $("lat").textContent=(i32(bytes,p+8)/1e7).toFixed(6);
+      $("lon").textContent=(i32(bytes,p+12)/1e7).toFixed(6);
+      $("alt").innerHTML=(i32(bytes,p+16)/1000).toFixed(1)+' <span class="unit">m</span>';
+      $("fix").textContent=u8(bytes,p+28)>=3?"3D FIX":"NO FIX";
+      $("sats").textContent=u8(bytes,p+29);
+      $("mapText").textContent=$("lat").textContent+", "+$("lon").textContent;
+    }
+
+    // GLOBAL_POSITION_INT (33)
+    if(id===33 && len>=28){
+      $("lat").textContent=(i32(bytes,p+4)/1e7).toFixed(6);
+      $("lon").textContent=(i32(bytes,p+8)/1e7).toFixed(6);
+      $("alt").innerHTML=(i32(bytes,p+16)/1000).toFixed(1)+' <span class="unit">m</span>';
+      const vx=i16(bytes,p+20)/100, vy=i16(bytes,p+22)/100;
+      $("speed").innerHTML=Math.sqrt(vx*vx+vy*vy).toFixed(1)+' <span class="unit">m/s</span>';
+      $("climb").innerHTML=(-i16(bytes,p+24)/100).toFixed(2)+' <span class="unit">m/s</span>';
+      $("heading").innerHTML=(u16(bytes,p+26)/100).toFixed(0)+' <span class="unit">°</span>';
+      $("mapText").textContent=$("lat").textContent+", "+$("lon").textContent;
+    }
+
+    // VFR_HUD (74)
+    if(id===74 && len>=20){
+      $("speed").innerHTML=(i32(bytes,p+4)/100).toFixed(1)+' <span class="unit">m/s</span>';
+      $("alt").innerHTML=(i32(bytes,p+8)).toFixed(1)+' <span class="unit">m</span>';
+      $("climb").innerHTML=(i32(bytes,p+12)).toFixed(2)+' <span class="unit">m/s</span>';
+      $("heading").innerHTML=i16(bytes,p+16)+' <span class="unit">°</span>';
+    }
+
+    // HEARTBEAT (0): custom_mode at payload 0, base_mode at 6 in MAVLink HEARTBEAT.
+    if(id===0 && len>=7){
+      $("mode").textContent=modeName(i32(bytes,p));
+      $("systemText").textContent=(u8(bytes,p+6)&0x80)?"APM ARMED":"APM CONNECTED";
+    }
+
+    i+=total;
+  }
+  return bytes.slice(i);
+}
+
+async function connectAPM(){
+  try{
+    if(!("serial" in navigator)){alert("Web Serial requires Chrome or Edge.");return;}
+    apmPort=await navigator.serial.requestPort();
+    await apmPort.open({baudRate:115200});
+    log("APM connected. Reading MAVLink telemetry...");
+    setSystem("APM CONNECTED",true);
+
+    const reader=apmPort.readable.getReader();
+    apmReader=reader;
+    let buffer=new Uint8Array(0);
+
+    while(true){
+      const {value,done}=await reader.read();
+      if(done) break;
+      if(value){
+        const merged=new Uint8Array(buffer.length+value.length);
+        merged.set(buffer);
+        merged.set(value,buffer.length);
+        buffer=parseMavlink(merged);
+      }
+    }
+  }catch(e){
+    log("APM error: "+e.message);
+  }
+}
+
+async function disconnectAll(){
+  for(const r of [arReader,apmReader]){try{if(r)await r.cancel();}catch(e){}}
+  for(const p of [arPort,apmPort]){try{if(p)await p.close();}catch(e){}}
+  arReader=apmReader=null;
+  arPort=apmPort=null;
+  setDistance(-1);
+  setSystem("SYSTEM STANDBY",false);
+  log("All serial connections closed.");
+}
+$("arduinoBtn").onclick=connectArduino;
+$("apmBtn").onclick=connectAPM;
+$("disconnectBtn").onclick=disconnectAll;
+
+// Radar renderer
+const c=$("radarCanvas"),x=c.getContext("2d");
+function radar(){const w=c.width,h=c.height,cx=w/2,cy=h-18,r=Math.min(w*.43,h*.88);x.clearRect(0,0,w,h);
+ x.strokeStyle="rgba(57,217,138,.34)";x.lineWidth=1;
+ for(let i=1;i<=4;i++){x.beginPath();x.arc(cx,cy,r*i/4,Math.PI,Math.PI*2);x.stroke()}
+ for(const a of [Math.PI,Math.PI*1.25,Math.PI*1.5,Math.PI*1.75,Math.PI*2]){x.beginPath();x.moveTo(cx,cy);x.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);x.stroke()}
+ x.strokeStyle="#39d98a";x.lineWidth=2;x.beginPath();x.moveTo(cx,cy);x.lineTo(cx,cy-r);x.stroke();
+ if(radarDistance>=0&&radarDistance<=200){const rr=r*radarDistance/200;x.fillStyle="#ffd34d";x.beginPath();x.arc(cx,cy-rr,7,0,Math.PI*2);x.fill()}
+ requestAnimationFrame(radar)}
+radar();
+</script>
+</body>
+</html>
